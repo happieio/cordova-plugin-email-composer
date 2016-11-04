@@ -129,14 +129,14 @@ public class EmailComposer extends CordovaPlugin {
     private void isAvailable (final String id) {
         cordova.getThreadPool().execute(new Runnable() {
             public void run() {
-                boolean[] available = impl.canSendMail(id, getContext());
-                List<PluginResult> messages = new ArrayList<PluginResult>();
-
-                messages.add(new PluginResult(PluginResult.Status.OK, available[0]));
-                messages.add(new PluginResult(PluginResult.Status.OK, available[1]));
-
-                PluginResult result = new PluginResult(
-                        PluginResult.Status.OK, messages);
+                boolean available = impl.canSendMail(getContext());
+                PluginResult result = null;
+                if(available){
+                    result = new PluginResult(PluginResult.Status.OK, true);
+                }
+                else{
+                    result = new PluginResult(PluginResult.Status.OK, false);
+                }
 
                 command.sendPluginResult(result);
             }
@@ -154,7 +154,7 @@ public class EmailComposer extends CordovaPlugin {
         JSONObject props = args.getJSONObject(0);
         String appId     = props.getString("app");
 
-        if (!(impl.canSendMail(appId, getContext()))[0]) {
+        if (!(impl.canSendMail(getContext()))) {
             LOG.i(LOG_TAG, "No client or account found for.");
             return;
         }

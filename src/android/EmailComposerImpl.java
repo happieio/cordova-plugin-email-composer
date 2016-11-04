@@ -88,18 +88,12 @@ public class EmailComposerImpl {
     /**
      * Tells if the device has the capability to send emails.
      *
-     * @param id
-     * The app id.
      * @param ctx
      * The application context.
      */
-    public boolean[] canSendMail (String id, Context ctx) {
-        // is possible with specified app
-        boolean withScheme = isAppInstalled(id, ctx);
+    public boolean canSendMail (Context ctx) {
         // is possible in general
-        boolean isPossible = isEmailAccountConfigured(ctx);
-
-        return new boolean[] { isPossible, withScheme };
+        return isEmailAccountConfigured(ctx);
     }
 
     /**
