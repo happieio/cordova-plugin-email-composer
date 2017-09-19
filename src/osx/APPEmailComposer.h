@@ -17,16 +17,13 @@
  under the License.
  */
 
-#import <MessageUI/MFMailComposeViewController.h>
+#import <Cordova/CDVPlugin.h>
 
-@interface APPEmailComposerImpl : NSObject
+@interface APPEmailComposer : CDVPlugin <NSSharingServiceDelegate>
 
+// Shows the email composer view with pre-filled data
+- (void) open:(CDVInvokedUrlCommand*)command;
 // Checks if the mail composer is able to send mails
-- (NSArray*) canSendMail:(NSString*)scheme;
-// Creates an mailto-url-sheme
-- (NSURL*) urlFromProperties:(NSDictionary*)props;
-// Instantiates an email composer view
-- (MFMailComposeViewController*) mailComposerFromProperties:(NSDictionary*)props
-                                                 delegateTo:(id)receiver;
+- (void) isAvailable:(CDVInvokedUrlCommand*)command;
 
 @end

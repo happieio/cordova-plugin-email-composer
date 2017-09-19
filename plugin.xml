@@ -1,30 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-    Copyright 2013-2016 appPlant UG
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
+ http://www.apache.org/licenses/LICENSE-2.0
 
-     http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
 -->
 
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android"
         id="cordova-plugin-email-composer"
-        version="0.8.3">
+        version="0.8.9">
 
     <name>EmailComposer</name>
 
@@ -42,7 +40,10 @@
     <author>Sebastián Katzer</author>
 
     <engines>
-        <engine name="cordova" version=">=3.0.0" />
+        <engine name="cordova" version=">=6.0.0" />
+        <engine name="cordova-android" version=">=6.2.0" />
+        <engine name="cordova-ios" version=">=4.0.0" />
+        <engine name="cordova-windows" version=">=4.3.0" />
     </engines>
 
     <!-- interface -->
@@ -53,7 +54,6 @@
 
     <!-- ios -->
     <platform name="ios">
-
         <config-file target="config.xml" parent="/*">
             <feature name="EmailComposer">
                 <param name="ios-package" value="APPEmailComposer"/>
@@ -73,12 +73,24 @@
 
         <framework src="MessageUI.framework" />
         <framework src="MobileCoreServices.framework" />
+    </platform>
 
+    <!-- osx -->
+    <platform name="osx">
+        <config-file target="config.xml" parent="/*">
+            <feature name="EmailComposer">
+                <param name="osx-package" value="APPEmailComposer"/>
+            </feature>
+        </config-file>
+
+        <header-file src="src/osx/APPEmailComposer.h" />
+        <source-file src="src/osx/APPEmailComposer.m" />
+        <header-file src="src/osx/APPEmailComposerImpl.h" />
+        <source-file src="src/osx/APPEmailComposerImpl.m" />
     </platform>
 
     <!-- android -->
     <platform name="android">
-
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="EmailComposer">
                 <param name="android-package"
@@ -90,6 +102,24 @@
             <uses-permission android:name="android.permission.GET_ACCOUNTS" />
         </config-file>
 
+        <config-file target="AndroidManifest.xml" parent="application">
+          <provider
+              android:name="de.appplant.cordova.emailcomposer.EmailComposerProvider"
+              android:authorities="${applicationId}.provider"
+              android:exported="false"
+              android:grantUriPermissions="true" >
+              <meta-data
+                  android:name="android.support.FILE_PROVIDER_PATHS"
+                  android:resource="@xml/emailcomposer_provider_paths"/>
+          </provider>
+        </config-file>
+
+        <framework src="com.android.support:support-v4:24.1.1+" />
+
+        <source-file
+            src="src/android/xml/emailcomposer_provider_paths.xml"
+            target-dir="res/xml" />
+
         <source-file
             src="src/android/EmailComposer.java"
             target-dir="src/de/appplant/cordova/emailcomposer" />
@@ -98,47 +128,23 @@
             src="src/android/EmailComposerImpl.java"
             target-dir="src/de/appplant/cordova/emailcomposer" />
 
-    </platform>
-
-    <!-- amazon-fireos -->
-    <platform name="amazon-fireos">
-
-        <config-file target="res/xml/config.xml" parent="/*">
-            <feature name="EmailComposer">
-                <param name="android-package"
-                       value="de.appplant.cordova.emailcomposer.EmailComposer"/>
-            </feature>
-        </config-file>
-
-        <config-file target="AndroidManifest.xml" parent="/manifest">
-            <uses-permission android:name="android.permission.GET_ACCOUNTS" />
-        </config-file>
-
         <source-file
-            src="src/android/EmailComposer.java"
+            src="src/android/EmailComposerProvider.java"
             target-dir="src/de/appplant/cordova/emailcomposer" />
-
-        <source-file
-            src="src/android/EmailComposerImpl.java"
-            target-dir="src/de/appplant/cordova/emailcomposer" />
-
     </platform>
 
     <!-- windows -->
     <platform name="windows">
-
         <js-module src="src/windows/EmailComposerProxy.js" name="EmailComposerProxy">
             <runs />
         </js-module>
         <js-module src="src/windows/EmailComposerProxyImpl.js" name="EmailComposerProxyImpl">
             <runs />
         </js-module>
-
     </platform>
 
     <!-- browser -->
     <platform name="browser">
-
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="EmailComposer">
                 <param name="browser-package"
@@ -149,7 +155,6 @@
         <js-module src="src/browser/EmailComposerProxy.js" name="EmailComposerProxy">
             <runs />
         </js-module>
-
     </platform>
 
 </plugin>

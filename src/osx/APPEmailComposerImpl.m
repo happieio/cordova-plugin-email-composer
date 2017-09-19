@@ -19,8 +19,7 @@
 
 #import "APPEmailComposerImpl.h"
 #import <Cordova/CDVAvailability.h>
-#import <MessageUI/MFMailComposeViewController.h>
-#import <MobileCoreServices/MobileCoreServices.h>
+#import <Cordova/NSData+Base64.h>
 
 @implementation APPEmailComposerImpl
 
@@ -35,7 +34,10 @@
  */
 - (NSArray*) canSendMail:(NSString*)scheme
 {
-    bool canSendMail = [MFMailComposeViewController canSendMail];
+    NSSharingService* service =
+    [NSSharingService sharingServiceNamed:NSSharingServiceNameComposeEmail];
+
+    bool canSendMail = [service canPerformWithItems:@[@"Test"]];
     bool withScheme  = false;
 
     if (!scheme) {
@@ -48,15 +50,11 @@
     scheme = [[scheme stringByAppendingString:@"test@test.de"]
                 stringByAddingPercentEncodingWithAllowedCharacters:set];
 
-    NSURL *url = [[NSURL URLWithString:scheme]
-                    absoluteURL];
+    NSURL* url = [NSURL URLWithString:scheme];
+    NSURL* app = [[NSWorkspace sharedWorkspace] URLForApplicationToOpenURL:url];
+    withScheme = app != NULL;
 
-    withScheme = [[UIApplication sharedApplication]
-                   canOpenURL:url];
-
-    NSArray* resultArray = [NSArray arrayWithObjects:@(canSendMail),@(withScheme), nil];
-
-    return resultArray;
+    return @[@(canSendMail), @(withScheme)];
 }
 
 /**
@@ -67,31 +65,29 @@
  *
  * @return The configured email composer view
  */
-- (MFMailComposeViewController*) mailComposerFromProperties:(NSDictionary*)props
-                                                 delegateTo:(id)receiver
+- (NSArray*) mailComposerFromProperties:(NSDictionary*)props
+                             delegateTo:(id)receiver
 {
     BOOL isHTML = [[props objectForKey:@"isHtml"] boolValue];
 
-    MFMailComposeViewController* draft;
+    NSSharingService* draft =
+    [NSSharingService sharingServiceNamed:NSSharingServiceNameComposeEmail];
 
-    draft = [[MFMailComposeViewController alloc] init];
+    draft.subject    = [props objectForKey:@"subject"];
 
-    // Subject
-    [self setSubject:[props objectForKey:@"subject"] ofDraft:draft];
-    // Body (as HTML)
-    [self setBody:[props objectForKey:@"body"] ofDraft:draft isHTML:isHTML];
-    // Recipients
-    [self setToRecipients:[props objectForKey:@"to"] ofDraft:draft];
-    // CC Recipients
-    [self setCcRecipients:[props objectForKey:@"cc"] ofDraft:draft];
-    // BCC Recipients
-    [self setBccRecipients:[props objectForKey:@"bcc"] ofDraft:draft];
-    // Attachments
-    [self setAttachments:[props objectForKey:@"attachments"] ofDraft:draft];
+    draft.recipients = [[[props objectForKey:@"to"]
+                        arrayByAddingObjectsFromArray:[props objectForKey:@"cc"]]
+                        arrayByAddingObjectsFromArray:[props objectForKey:@"bcc"]];
 
-    draft.mailComposeDelegate = receiver;
+    NSAttributedString* body =
+    [self getBody:[props objectForKey:@"body"] isHTML:isHTML];
 
-    return draft;
+    NSArray* attachments =
+    [self getAttachments:[props objectForKey:@"attachments"]];
+
+    draft.delegate = receiver;
+
+    return @[draft, body, attachments];
 }
 
 /**
@@ -158,64 +154,26 @@
 #pragma mark Private
 
 /**
- * Sets the subject of the email draft.
- *
- * @param subject The subject
- * @param draft   The email composer view
- */
-- (void) setSubject:(NSString*)subject
-            ofDraft:(MFMailComposeViewController*)draft
-{
-    [draft setSubject:subject];
-}
-
-/**
  * Sets the body of the email draft.
  *
  * @param body   The body
- * @param isHTML Indicates if the body is an HTML encoded string.
  * @param draft  The email composer view
  */
-- (void) setBody:(NSString*)body ofDraft:(MFMailComposeViewController*)draft
-          isHTML:(BOOL)isHTML
+- (NSAttributedString*) getBody:(NSString*)body isHTML:(BOOL)isHTML
 {
-    [draft setMessageBody:body isHTML:isHTML];
-}
+    if (!isHTML)
+        return [[NSAttributedString alloc] initWithString:body];
 
-/**
- * Sets the recipients of the email draft.
- *
- * @param recipients The recipients
- * @param draft      The email composer view.
- */
-- (void) setToRecipients:(NSArray*)recipients
-                 ofDraft:(MFMailComposeViewController*)draft
-{
-    [draft setToRecipients:recipients];
-}
+    NSData* html =
+    [NSData dataWithBytes:[body UTF8String]
+                   length:[body lengthOfBytesUsingEncoding:NSUTF8StringEncoding]];
 
-/**
- * Sets the CC recipients of the email draft.
- *
- * @param ccRecipients The CC recipients
- * @param draft        The email composer view
- */
-- (void) setCcRecipients:(NSArray*)ccRecipients
-                 ofDraft:(MFMailComposeViewController*)draft
-{
-    [draft setCcRecipients:ccRecipients];
-}
+    NSString* www  = [[NSBundle mainBundle] pathForResource:@"www" ofType:NULL];
+    NSURL* baseURL = [NSURL fileURLWithPath:www];
 
-/**
- * Sets the BCC recipients of the email draft.
- *
- * @param bccRecipients The BCC recipients
- * @param draft         The email composer view.
- */
-- (void) setBccRecipients:(NSArray*)bccRecipients
-                  ofDraft:(MFMailComposeViewController*)draft
-{
-    [draft setBccRecipients:bccRecipients];
+    return [[NSAttributedString alloc] initWithHTML:html
+                                            baseURL:baseURL
+                                 documentAttributes:NULL];
 }
 
 /**
@@ -224,57 +182,51 @@
  * @param attachments The attachments
  * @param draft       The email composer view
  */
-- (void) setAttachments:(NSArray*)attatchments
-                ofDraft:(MFMailComposeViewController*)draft
+- (NSArray*) getAttachments:(NSArray*)attatchments
 {
-    if (!attatchments) return;
+    NSMutableArray* uris = [[NSMutableArray alloc] init];
+
+    if (!attatchments)
+        return uris;
 
     for (NSString* path in attatchments)
     {
-        NSData* data = [self getDataForAttachmentPath:path];
+        NSURL* url = [self urlForAttachmentPath:path];
 
-        if (!data) continue;
-
-        NSString* basename = [self getBasenameFromAttachmentPath:path];
-        NSString* pathExt  = [basename pathExtension];
-        NSString* fileName = [basename pathComponents].lastObject;
-        NSString* mimeType = [self getMimeTypeFromFileExtension:pathExt];
-
-        // Couldn't find mimeType, must be some type of binary data
-        if (mimeType == nil) mimeType = @"application/octet-stream";
-
-        [draft addAttachmentData:data mimeType:mimeType fileName:fileName];
+        [uris addObject:url];
     }
+
+    return uris;
 }
 
 /**
- * Returns the data for a given (relative) attachment path.
+ * Returns the URL for a given (relative) attachment path.
  *
  * @param path An absolute/relative path or the base64 data
  *
- * @return The data for the attachment.
+ * @return The URL for the attachment.
  */
-- (NSData*) getDataForAttachmentPath:(NSString*)path
+- (NSURL<NSPasteboardWriting>*) urlForAttachmentPath:(NSString*)path
 {
     if ([path hasPrefix:@"file:///"])
     {
-        return [self dataForAbsolutePath:path];
+        return [self urlForAbsolutePath:path];
     }
     else if ([path hasPrefix:@"res:"])
     {
-        return [self dataForResource:path];
+        return [self urlForResource:path];
     }
     else if ([path hasPrefix:@"file://"])
     {
-        return [self dataForAsset:path];
+        return [self urlForAsset:path];
     }
     else if ([path hasPrefix:@"app://"])
     {
-        return [self dataForAppInternalPath:path];
+        return [self urlForAppInternalPath:path];
     }
     else if ([path hasPrefix:@"base64:"])
     {
-        return [self dataFromBase64:path];
+        return [self urlFromBase64:path];
     }
 
     NSFileManager* fm = [NSFileManager defaultManager];
@@ -283,7 +235,7 @@
         NSLog(@"File not found: %@", path);
     }
 
-    return [fm contentsAtPath:path];
+    return [NSURL fileURLWithPath:path];
 }
 
 /**
@@ -293,7 +245,7 @@
  *
  * @return The data for the attachment.
  */
-- (NSData*) dataForAbsolutePath:(NSString*)path
+- (NSURL<NSPasteboardWriting>*) urlForAbsolutePath:(NSString*)path
 {
     NSFileManager* fm = [NSFileManager defaultManager];
     NSString* absPath;
@@ -305,9 +257,7 @@
         NSLog(@"File not found: %@", absPath);
     }
 
-    NSData* data = [fm contentsAtPath:absPath];
-
-    return data;
+    return [NSURL fileURLWithPath:absPath];
 }
 
 /**
@@ -317,43 +267,46 @@
  *
  * @return The data for the attachment.
  */
-- (NSData*) dataForResource:(NSString*)path
-{
-    NSString* imgName = [[path pathComponents].lastObject
-                         stringByDeletingPathExtension];
-
-#ifdef __CORDOVA_4_0_0
-    if ([imgName isEqualToString:@"icon"]) {
-        imgName = @"AppIcon60x60@3x";
-    }
-#endif
-
-    UIImage* img = [UIImage imageNamed:imgName];
-
-    if (img == NULL) {
-        NSLog(@"File not found: %@", path);
-    }
-
-    NSData* data = UIImagePNGRepresentation(img);
-
-    return data;
-}
-
-/**
- * Retrieves the data for a asset path.
- *
- * @param path A relative www file path.
- *
- * @return The data for the attachment.
- */
-- (NSData*) dataForAsset:(NSString*)path
+- (NSURL<NSPasteboardWriting>*) urlForResource:(NSString*)path
 {
     NSFileManager* fm = [NSFileManager defaultManager];
     NSString* absPath;
 
     NSBundle* mainBundle = [NSBundle mainBundle];
     NSString* bundlePath = [[mainBundle bundlePath]
-                            stringByAppendingString:@"/"];
+                            stringByAppendingString:@"/Contents/Resources/"];
+
+    if ([path hasPrefix:@"res://icon"]) {
+        path = @"res://AppIcon.icns";
+    }
+
+    absPath = [path stringByReplacingOccurrencesOfString:@"res://"
+                                              withString:@""];
+
+    absPath = [bundlePath stringByAppendingString:absPath];
+
+    if (![fm fileExistsAtPath:absPath]) {
+        NSLog(@"File not found: %@", absPath);
+    }
+
+    return [NSURL fileURLWithPath:absPath];
+}
+
+/**
+ * Retrieves the file URL for a asset path.
+ *
+ * @param path A relative www file path.
+ *
+ * @return The URL to the attachment.
+ */
+- (NSURL<NSPasteboardWriting>*) urlForAsset:(NSString*)path
+{
+    NSFileManager* fm = [NSFileManager defaultManager];
+    NSString* absPath;
+
+    NSBundle* mainBundle = [NSBundle mainBundle];
+    NSString* bundlePath = [[mainBundle bundlePath]
+                            stringByAppendingString:@"/Contents/Resources/"];
 
     absPath = [path stringByReplacingOccurrencesOfString:@"file:/"
                                               withString:@"www"];
@@ -364,9 +317,7 @@
         NSLog(@"File not found: %@", absPath);
     }
 
-    NSData* data = [fm contentsAtPath:absPath];
-
-    return data;
+    return [NSURL fileURLWithPath:absPath];
 }
 
 /**
@@ -374,9 +325,9 @@
  *
  * @param path A relative file path from main bundle dir.
  *
- * @return The data for the attachment.
+ * @return The URL for the internal path.
  */
-- (NSData*) dataForAppInternalPath:(NSString*)path
+- (NSURL<NSPasteboardWriting>*) urlForAppInternalPath:(NSString*)path
 {
     NSFileManager* fm = [NSFileManager defaultManager];
 
@@ -387,9 +338,7 @@
         NSLog(@"File not found: %@", absPath);
     }
 
-    NSData* data = [fm contentsAtPath:absPath];
-
-    return data;
+    return [NSURL fileURLWithPath:absPath];
 }
 
 /**
@@ -399,15 +348,16 @@
  *
  * @return The data for the attachment.
  */
-- (NSData*) dataFromBase64:(NSString*)base64String
+- (NSURL<NSPasteboardWriting>*) urlFromBase64:(NSString*)base64String
 {
+    NSString *filename = [self getBasenameFromAttachmentPath:base64String];
     NSUInteger length = [base64String length];
     NSRegularExpression *regex;
     NSString *dataString;
 
     regex = [NSRegularExpression regularExpressionWithPattern:@"^base64:[^/]+.."
                                                       options:NSRegularExpressionCaseInsensitive
-                                                        error:NULL];
+                                                        error:Nil];
 
     dataString = [regex stringByReplacingMatchesInString:base64String
                                                  options:0
@@ -417,33 +367,8 @@
     NSData* data = [[NSData alloc] initWithBase64EncodedString:dataString
                                                        options:0];
 
-    return data;
-}
 
-/**
- * Retrieves the mime type from the file extension.
- *
- * @param extension The file's extension.
- *
- * @return The coresponding MIME type.
- */
-- (NSString*) getMimeTypeFromFileExtension:(NSString*)extension
-{
-    if (!extension)
-        return nil;
-
-    // Get the UTI from the file's extension
-    CFStringRef ext  = (CFStringRef)CFBridgingRetain(extension);
-    CFStringRef type = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, ext, NULL);
-
-    // Converting UTI to a mime type
-    NSString *result = (NSString*)
-    CFBridgingRelease(UTTypeCopyPreferredTagWithClass(type, kUTTagClassMIMEType));
-
-    CFRelease(ext);
-    CFRelease(type);
-
-    return result;
+    return [self urlForData:data withFileName:filename];
 }
 
 /**
@@ -467,6 +392,36 @@
     }
 
     return path;
+}
+
+/**
+ * Write the data into a temp file.
+ *
+ * @param data The data to save into a file.
+ * @param name The name of the file.
+ *
+ * @return The file URL
+ */
+- (NSURL*) urlForData:(NSData*)data withFileName:(NSString*) filename
+{
+    NSFileManager* fm = [NSFileManager defaultManager];
+
+    NSString* tempDir = NSTemporaryDirectory();
+
+    [fm createDirectoryAtPath:tempDir withIntermediateDirectories:YES
+                   attributes:NULL
+                        error:NULL];
+
+    NSString* absPath = [tempDir stringByAppendingPathComponent:filename];
+
+    NSURL* url = [NSURL fileURLWithPath:absPath];
+    [data writeToURL:url atomically:NO];
+
+    if (![fm fileExistsAtPath:absPath]) {
+        NSLog(@"File not found: %@", absPath);
+    }
+
+    return url;
 }
 
 @end

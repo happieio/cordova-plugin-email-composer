@@ -1,26 +1,25 @@
 /*
-    Copyright 2013-2016 appPlant UG
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
+ http://www.apache.org/licenses/LICENSE-2.0
 
-     http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
-*/
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+ */
 
 var exec      = require('cordova/exec'),
-    isAndroid = navigator.userAgent.toLowerCase().indexOf('android') > -1,
+    ua        = navigator.userAgent.toLowerCase(),
+    isAndroid = !window.Windows && ua.indexOf('android') > -1,
     mailto    = 'mailto:';
 
 /**
@@ -33,7 +32,7 @@ exports.aliases = {
 /**
  * List of all available options with their default value.
  *
- * @return {Object}
+ * @return [ Object ]
  */
 exports.getDefaults = function () {
     return {
@@ -50,90 +49,140 @@ exports.getDefaults = function () {
 };
 
 /**
+ * Informs if the app has the needed permission.
+ *
+ * @param [ Function ] callback The callback function.
+ * @param [ Object ]   scope    The scope of the callback.
+ *
+ * @return [ Void ]
+ */
+exports.hasPermission = function(callback, scope) {
+    var fn = this.createCallbackFn(callback, scope);
+
+    if (!isAndroid) {
+        if (fn) fn(true);
+        return;
+    }
+
+    exec(fn, null, 'EmailComposer','hasPermission', []);
+ };
+
+/**
+ * Request permission if not already granted.
+ *
+ * @param [ Function ] callback The callback function.
+ * @param [ Object ]   scope    The scope of the callback.
+ *
+ * @return [ Void ]
+ */
+exports.requestPermission = function(callback, scope) {
+    var fn = this.createCallbackFn(callback, scope);
+
+    if (!isAndroid) {
+        if (fn) fn(true);
+        return;
+    }
+
+    exec(fn, null, 'EmailComposer','requestPermission', []);
+};
+
+/**
  * Verifies if sending emails is supported on the device.
  *
- * @param {String?} app
- *      An optional app id or uri scheme. Defaults to mailto.
- * @param {Function} callback
- *      A callback function to be called with the result
- * @param {Object} scope
- *      The scope of the callback
+ * @param [ String ]   app      An optional app id or uri scheme.
+ *                              Defaults to mailto.
+ * @param [ Function ] callback The callback function.
+ * @param [ Object ]   scope    The scope of the callback.
+ *
+ * @return [ Void ]
  */
 exports.isAvailable = function (app, callback, scope) {
 
-    if (typeof callback != 'function'){
+    if (typeof callback != 'function') {
         scope    = null;
         callback = app;
         app      = mailto;
     }
 
-    app = app || mailto;
+    var fn  = this.createCallbackFn(callback, scope);
+        app = app || mailto;
 
-    if (this.aliases.hasOwnProperty(app)){
+    if (this.aliases.hasOwnProperty(app)) {
         app = this.aliases[app];
     }
-
-    var fn = this.createCallbackFn(callback, scope);
 
     exec(fn, null, 'EmailComposer', 'isAvailable', [app]);
 };
 
 /**
+ * Verifies if sending emails is supported on the device.
+ *
+ * @param [ String ]   app      An optional app id or uri scheme.
+ *                              Defaults to mailto.
+ * @param [ Function ] callback The callback function.
+ * @param [ Object ]   scope    The scope of the callback.
+ *
+ * @return [ Void ]
+ */
+exports.isAvailable2 = function (app, callback, scope) {
+
+    if (typeof callback != 'function') {
+        scope    = null;
+        callback = app;
+        app      = mailto;
+    }
+
+    var fn  = this.createCallbackFn(callback, scope), fn2;
+        app = app || mailto;
+
+    if (this.aliases.hasOwnProperty(app)) {
+        app = this.aliases[app];
+    }
+
+    if (fn) {
+        fn2 = function (a, b) { fn(b, a); };
+    }
+
+    exec(fn2, null, 'EmailComposer', 'isAvailable', [app]);
+};
+
+/**
  * Displays the email composer pre-filled with data.
  *
- * @param {Object} options
- *      Different properties of the email like the body, subject
- * @param {Function} callback
- *      A callback function to be called with the result
- * @param {Object?} scope
- *      The scope of the callback
+ * @param [ Object ]   options  The email properties like the body,...
+ * @param [ Function ] callback The callback function.
+ * @param [ Object ]   scope    The scope of the callback.
+ *
+ * @return [ Void ]
  */
 exports.open = function (options, callback, scope) {
-    var fn = this.createCallbackFn(callback, scope),
-        me = this;
 
-    options = this.mergeWithDefaults(options || {});
+    if (typeof options == 'function') {
+        scope    = callback;
+        callback = options;
+        options  = {};
+    }
 
-    var onAvailable = function (isPossible, withScheme) {
+    var fn      = this.createCallbackFn(callback, scope);
+        options = this.mergeWithDefaults(options || {});
 
-        if (!isPossible)
-            return fn();
+    if (!isAndroid && options.app != mailto && fn) {
+        this.registerCallbackForScheme(fn);
+    }
 
-        if (!withScheme) {
-            if (window.console) { console.log('Cannot open app'); }
-            options.app = mailto;
-        }
-
-        if (!isAndroid && options.app != mailto) {
-            me.registerCallbackForScheme(fn);
-        }
-
-        exec(fn, null, 'EmailComposer', 'open', [options]);
-    };
-
-    exec(onAvailable, null, 'EmailComposer', 'isAvailable', [options.app]);
+    exec(fn, null, 'EmailComposer', 'open', [options]);
 };
 
 /**
  * Adds a new mail app alias.
  *
- * @param {String} alias
- *      The alias name
- * @param {String} package
- *      The package name
+ * @param [ String ] alias   The alias name.
+ * @param [ String ] package The package name.
+ *
+ * @return [ Void ]
  */
 exports.addAlias = function (alias, package) {
     this.aliases[alias] = package;
-};
-
-/**
- * @depreacted
- */
-exports.isServiceAvailable = function () {
-    console.log('`email.isServiceAvailable` is deprecated.' +
-                ' Please use `email.isAvailable` instead.');
-
-    this.isAvailable.apply(this, arguments);
 };
 
 /**
@@ -148,12 +197,9 @@ exports.openDraft = function () {
  *
  * Merge settings with default values.
  *
- * @param {Object} options
- *      The custom options
+ * @param [ Object ] options The custom options
  *
- * @retrun {Object}
- *      Default values merged
- *      with custom values
+ * @retrun [ Object ] Default values merged with custom values.
  */
 exports.mergeWithDefaults = function (options) {
     var defaults = this.getDefaults();
@@ -164,7 +210,6 @@ exports.mergeWithDefaults = function (options) {
 
     if (options.hasOwnProperty('app')) {
         var package = this.aliases[options.app];
-
         options.app = package || options.app;
     }
 
@@ -183,15 +228,14 @@ exports.mergeWithDefaults = function (options) {
             continue;
         }
 
-        if (typeof default_ != typeof custom_) {
+        if (typeof default_ == typeof custom_)
+            continue;
 
-            if (typeof default_ == 'string') {
-                options[key] = custom_.join('');
-            }
-
-            else if (typeof default_ == 'object') {
-                options[key] = [custom_.toString()];
-            }
+        if (typeof default_ == 'string') {
+            options[key] = custom_.join('');
+        } else
+        if (typeof default_ == 'object') {
+            options[key] = [custom_.toString()];
         }
     }
 
@@ -204,21 +248,18 @@ exports.mergeWithDefaults = function (options) {
  * Creates a callback, which will be executed
  * within a specific scope.
  *
- * @param {Function} callbackFn
- *      The callback function
- * @param {Object} scope
- *      The scope for the function
+ * @param [ Function ] callback The callback function.
+ * @param [ Object ]   scope    The scope for the function.
  *
- * @return {Function}
- *      The new callback function
+ * @return [ Function ] The new callback function
  */
-exports.createCallbackFn = function (callbackFn, scope) {
+exports.createCallbackFn = function (callback, scope) {
 
-    if (typeof callbackFn != 'function')
+    if (typeof callback != 'function')
         return;
 
     return function () {
-        callbackFn.apply(scope || this, arguments);
+        callback.apply(scope || this, arguments);
     };
 };
 
@@ -227,8 +268,10 @@ exports.createCallbackFn = function (callbackFn, scope) {
  *
  * Register an Eventlistener on resume-Event to
  * execute callback after open a draft.
+ *
+ * @return [ Void ]
  */
-exports.registerCallbackForScheme = function(fn) {
+exports.registerCallbackForScheme = function (fn) {
 
     var callback = function () {
         fn();

@@ -17,16 +17,10 @@
  under the License.
  */
 
-#import <MessageUI/MFMailComposeViewController.h>
+package de.appplant.cordova.emailcomposer;
 
-@interface APPEmailComposerImpl : NSObject
+import android.support.v4.content.FileProvider;
 
-// Checks if the mail composer is able to send mails
-- (NSArray*) canSendMail:(NSString*)scheme;
-// Creates an mailto-url-sheme
-- (NSURL*) urlFromProperties:(NSDictionary*)props;
-// Instantiates an email composer view
-- (MFMailComposeViewController*) mailComposerFromProperties:(NSDictionary*)props
-                                                 delegateTo:(id)receiver;
-
-@end
+public class EmailComposerProvider extends FileProvider {
+    // Nothing to do here
+}

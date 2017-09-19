@@ -53,7 +53,7 @@
 - (void) isAvailable:(CDVInvokedUrlCommand*)cmd
 {
     [self.commandDelegate runInBackground:^{
-        NSString* scheme = cmd.arguments[0];
+        NSString* scheme   = [cmd argumentAtIndex:0];
         NSArray* boolArray = [self.impl canSendMail:scheme];
         CDVPluginResult* result;
 
@@ -70,7 +70,7 @@
  */
 - (void) open:(CDVInvokedUrlCommand*)cmd
 {
-    NSDictionary* props = cmd.arguments[0];
+    NSDictionary* props = [cmd argumentAtIndex:0];
 
     self.command = cmd;
 
@@ -87,19 +87,20 @@
 }
 
 #pragma mark -
-#pragma mark MFMailComposeViewControllerDelegate
+#pragma mark NSSharingServicePickerDelegate
 
-/**
- * Delegate will be called after the mail composer did finish an action
- * to dismiss the view.
- */
-- (void) mailComposeController:(MFMailComposeViewController*)controller
-           didFinishWithResult:(MFMailComposeResult)result
-                         error:(NSError*)error
+- (void) sharingService:(NSSharingService *)sharingService
+          didShareItems:(NSArray *)items
 {
-    [controller dismissViewControllerAnimated:YES completion:NULL];
-
     [self execCallback];
+    self.command = NULL;
+}
+
+- (void) sharingService:(NSSharingService *)sharingService
+    didFailToShareItems:(NSArray *)items
+                  error:(NSError *)error
+{
+    [self sharingService:sharingService didShareItems:items];
 }
 
 #pragma mark -
@@ -111,17 +112,21 @@
 - (void) presentMailComposerFromProperties:(NSDictionary*)props
 {
     dispatch_async(dispatch_get_main_queue(), ^{
-        MFMailComposeViewController* draft =
+        NSArray* res =
         [self.impl mailComposerFromProperties:props delegateTo:self];
+
+        NSSharingService* draft     = res[0];
+        NSAttributedString* body    = res[1];
+        NSMutableArray* attachments = res[2];
 
         if (!draft) {
             [self execCallback];
             return;
         }
 
-        [self.viewController presentViewController:draft
-                                          animated:YES
-                                        completion:NULL];
+        [attachments insertObject:body atIndex:0];
+
+        [draft performWithItems:attachments];
     });
 
 }
@@ -133,7 +138,7 @@
 {
     NSURL* url = [self.impl urlFromProperties:props];
 
-    [[UIApplication sharedApplication] openURL:url];
+    [[NSWorkspace sharedWorkspace] openURL:url];
 }
 
 /**

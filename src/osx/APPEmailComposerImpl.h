@@ -17,8 +17,6 @@
  under the License.
  */
 
-#import <MessageUI/MFMailComposeViewController.h>
-
 @interface APPEmailComposerImpl : NSObject
 
 // Checks if the mail composer is able to send mails
@@ -26,7 +24,7 @@
 // Creates an mailto-url-sheme
 - (NSURL*) urlFromProperties:(NSDictionary*)props;
 // Instantiates an email composer view
-- (MFMailComposeViewController*) mailComposerFromProperties:(NSDictionary*)props
-                                                 delegateTo:(id)receiver;
+- (NSArray*) mailComposerFromProperties:(NSDictionary*)props
+                             delegateTo:(id)receiver;
 
 @end
