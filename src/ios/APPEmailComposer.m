@@ -1,4 +1,6 @@
 /*
+ Copyright 2013-2016 appPlant UG
+
  Licensed to the Apache Software Foundation (ASF) under one
  or more contributor license agreements.  See the NOTICE file
  distributed with this work for additional information
@@ -19,60 +21,70 @@
 
 #import "APPEmailComposer.h"
 #import "APPEmailComposerImpl.h"
+#import <Cordova/CDVAvailability.h>
+#ifndef __CORDOVA_4_0_0
+    #import <Cordova/NSData+Base64.h>
+#endif
+#import <MobileCoreServices/MobileCoreServices.h>
+
+#include "TargetConditionals.h"
 
 @interface APPEmailComposer ()
 
-// Reference is needed because of the async delegate
-@property (nonatomic, strong) CDVInvokedUrlCommand* command;
-// Implements the core functionality
-@property (nonatomic, strong) APPEmailComposerImpl* impl;
+@property (nonatomic, retain) CDVInvokedUrlCommand* command;
+
+/**
+ * Implements the plugin functionality.
+ */
+@property (nonatomic, retain) APPEmailComposerImpl* impl;
 
 @end
 
 @implementation APPEmailComposer
 
-@synthesize command, impl;
-
 #pragma mark -
 #pragma mark Lifecycle
 
-/**
- * Initialize the core impl object which does the main stuff.
- */
-- (void) pluginInitialize
+- (void)pluginInitialize
 {
-    self.impl = [[APPEmailComposerImpl alloc] init];
+    _impl = [[APPEmailComposerImpl alloc] init];
 }
 
 #pragma mark -
 #pragma mark Public
 
 /**
- * Check if the mail composer is able to send mails.
+ * Checks if the mail composer is able to send mails.
+ *
+ * @param callbackId
+ *      The ID of the JS function to be called with the result
  */
-- (void) isAvailable:(CDVInvokedUrlCommand*)cmd
+- (void) isAvailable:(CDVInvokedUrlCommand*)command
 {
     [self.commandDelegate runInBackground:^{
-        NSString* scheme = cmd.arguments[0];
-        NSArray* boolArray = [self.impl canSendMail:scheme];
+        NSString* scheme = command.arguments[0];
+        NSArray* boolArray = [_impl canSendMail:scheme];
         CDVPluginResult* result;
 
         result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
                                      messageAsMultipart:boolArray];
 
         [self.commandDelegate sendPluginResult:result
-                                    callbackId:cmd.callbackId];
+                                    callbackId:command.callbackId];
     }];
 }
 
 /**
- * Show the email composer view with pre-filled data.
+ * Shows the email composer view with pre-filled data.
+ *
+ * @param properties
+ *      The email properties like subject, body, attachments
  */
-- (void) open:(CDVInvokedUrlCommand*)cmd
+- (void) open:(CDVInvokedUrlCommand*)command
 {
-    NSDictionary* props = cmd.arguments[0];
+    NSDictionary* props = command.arguments[0];
 
-    self.command = cmd;
+    _command = command;
 
     [self.commandDelegate runInBackground:^{
         NSString* scheme = [props objectForKey:@"app"];
@@ -82,7 +94,13 @@
             return;
         }
 
-        [self presentMailComposerFromProperties:props];
+        if (TARGET_IPHONE_SIMULATOR) {
+            [self informAboutIssueWithSimulators];
+            [self execCallback];
+        }
+        else {
+            [self presentMailComposerFromProperties:props];
+        }
     }];
 }
 
@@ -107,17 +125,15 @@
 
 /**
  * Displays the email draft.
+ *
+ * @param draft
+ *      The email composer view
  */
 - (void) presentMailComposerFromProperties:(NSDictionary*)props
 {
     dispatch_async(dispatch_get_main_queue(), ^{
         MFMailComposeViewController* draft =
-        [self.impl mailComposerFromProperties:props delegateTo:self];
-
-        if (!draft) {
-            [self execCallback];
-            return;
-        }
+        [_impl mailComposerFromProperties:props delegateTo:self];
 
         [self.viewController presentViewController:draft
                                           animated:YES
@@ -128,20 +144,43 @@
 
 /**
  * Instructs the application to open the specified URL.
+ *
+ * @param url
+ * A mailto: compatible URL.
  */
 - (void) openURLFromProperties:(NSDictionary*)props
 {
-    NSURL* url = [self.impl urlFromProperties:props];
+    NSURL* url = [_impl urlFromProperties:props];
 
     [[UIApplication sharedApplication] openURL:url];
 }
 
 /**
  * If the specified app if the buil-in iMail framework can be used.
+ *
+ * @param scheme
+ * An URL scheme.
+ * @return
+ * true if the scheme does refer to the email: scheme.
  */
 - (BOOL) canUseAppleMail:(NSString*) scheme
 {
     return [scheme hasPrefix:@"mailto"];
+}
+
+/**
+ * Presents a dialog to the user to inform him about an issue with the iOS8
+ * simulator in combination with the mail library.
+ */
+- (void) informAboutIssueWithSimulators
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[[UIAlertView alloc] initWithTitle:@"Email-Composer"
+                                    message:@"Please use a physical device."
+                                   delegate:NULL
+                          cancelButtonTitle:@"OK"
+                          otherButtonTitles:NULL] show];
+    });
 }
 
 /**
@@ -153,7 +192,7 @@
                                resultWithStatus:CDVCommandStatus_OK];
 
     [self.commandDelegate sendPluginResult:result
-                                callbackId:self.command.callbackId];
+                                callbackId:_command.callbackId];
 }
 
 @end
